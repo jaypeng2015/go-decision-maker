@@ -130,7 +130,7 @@ func spartaLambdaFunctions(api *sparta.API) []*sparta.LambdaAWSInfo {
 
 	if nil != api {
 		apiGatewayResource, _ := api.NewResource("/roll", lambdaFn)
-		_, err := apiGatewayResource.NewMethod("POST", http.StatusCreated)
+		_, err := apiGatewayResource.NewMethod("POST", http.StatusOK)
 		if nil != err {
 			panic("Failed to create /roll resource")
 		}
