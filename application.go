@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/Sirupsen/logrus"
@@ -47,11 +48,15 @@ func makeDecision(w http.ResponseWriter, r *http.Request) {
 	// 2. Conditionally unmarshal to get the Slack text.  See
 	// https://api.slack.com/slash-commands
 	// for the value name list
-	var bodyData map[string]interface{}
-	var ok bool
-	if bodyData, ok = lambdaEvent.Body.(map[string]interface{}); ok {
+	requestParams := url.Values{}
+	if bodyData, ok := lambdaEvent.Body.(string); ok {
+		requestParams, err = url.ParseQuery(bodyData)
+		if err != nil {
+			logger.Error("Failed to parse query: ", err.Error())
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		logger.WithFields(logrus.Fields{
-			"Values": bodyData,
+			"Values": requestParams,
 		}).Info("Slack slashcommand values")
 	} else {
 		logger.Info("Event body empty")
@@ -60,24 +65,24 @@ func makeDecision(w http.ResponseWriter, r *http.Request) {
 	// 3. Create the response
 	// Slack formatting:
 	// https://api.slack.com/docs/formatting
-	var userId = ""
-	if bodyData["user_id"] != nil {
-		userId = bodyData["user_id"].(string)
+	var userID string
+	if requestParams["user_id"] != nil && len(requestParams["user_id"]) > 0 {
+		userID = "<@" + requestParams["user_id"][0] + ">"
 	} else {
-		userId = "You"
+		userID = "You"
 	}
-	var text = ""
-	if bodyData["text"] != nil && bodyData["text"].(string) == "coin" {
+	var text string
+	if requestParams["text"] != nil && len(requestParams["user_id"]) > 0 && requestParams["text"][0] == "coin" {
 		text = "coin"
 	} else {
 		text = "dice"
 	}
 
-	var responseText = ""
+	var responseText string
 	if text == "dice" {
-		responseText = userId + " just rolled :dice_" + strconv.Itoa(rand.Intn(6)+1) + ":"
+		responseText = userID + " just rolled :dice_" + strconv.Itoa(rand.Intn(6)+1) + ":"
 	} else {
-		responseText = userId + " just rolled :coin_" + strconv.Itoa(rand.Intn(2)+1) + ":"
+		responseText = userID + " just rolled :coin_" + strconv.Itoa(rand.Intn(2)+1) + ":"
 	}
 
 	// 4. Setup the response object:
@@ -92,6 +97,7 @@ func makeDecision(w http.ResponseWriter, r *http.Request) {
 		logger.Error("Failed to marshal response: ", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+
 	w.Write(responseBody)
 }
 
@@ -110,7 +116,7 @@ func spartaLambdaFunctions(api *sparta.API) []*sparta.LambdaAWSInfo {
 		})
 	lambdaFn := sparta.HandleAWSLambda(sparta.LambdaName(makeDecision),
 		http.HandlerFunc(makeDecision),
-		nil)
+		roleDefinition)
 
 	vpcConfig := cloudformation.LambdaFunctionVPCConfig{}
 	vpcConfig.SecurityGroupIDs = &cloudformation.StringListExpr{
@@ -140,7 +146,7 @@ func main() {
 
 	// Deploy it
 	sparta.Main("GoDecisionMaker",
-		"Simple Sparta application that creates a single AWS Lambda function",
+		"The Decision Maker in Go.",
 		spartaLambdaFunctions(apiGateway),
 		apiGateway,
 		nil)
