@@ -56,9 +56,33 @@ go test -v
 
     ```
       export AWS_PROFILE=decisionmaker
+      export AWS_REGION=ap-southeast-2 ## To avoid `Error: MissingRegion: could not find region configuration`
     ```
 
-#### Command Lines
+#### Create an S3 Bucket
+
+Create an S3 bucket and make sure you have write access since Sparta uploads the lambda package and CloudFormation template to that bucket as part of provisioning.
+
+#### Check What Will Happen
+
+Get a view of what’s going on by the describe command (replacing $S3_BUCKET with the S3 bucket you just created).
+
+```
+mkdir .sparta
+go run application.go --level info describe --out .sparta/graph.html --s3Bucket $S3_BUCKET
+```
+
+Then open graph.html in your browser to see what will be provisioned.
+
+#### Deploy
+
+Replace $S3_BUCKET with the S3 bucket you just created and run:
+
+```
+go run application.go provision --s3Bucket $S3_BUCKET
+```
+
+#### Full Command Lines
 
 A compiled application provides several command line options which are available by providing the -h/--help option as in:
 
