@@ -4,13 +4,24 @@ import (
 	"encoding/json"
 	"math/rand"
 	"net/http"
-	"net/url"
 	"strconv"
 
-	"github.com/Sirupsen/logrus"
 	sparta "github.com/mweagle/Sparta"
 	cloudformation "github.com/mweagle/go-cloudformation"
 )
+
+type slashCommandJSONBody struct {
+	Token       string `json:"token"`
+	TeamID      string `json:"team_id"`
+	TeamDomain  string `json:"team_domain"`
+	ChannelID   string `json:"channel_id"`
+	ChannelName string `json:"channel_name"`
+	UserID      string `json:"user_id"`
+	UserName    string `json:"user_name"`
+	Command     string `json:"command"`
+	Text        string `json:"text"`
+	ResponseURL string `json:"response_url"`
+}
 
 // slackLambdaJSONEvent provides a pass through mapping
 // of all whitelisted Parameters.  The transformation is defined
@@ -20,7 +31,7 @@ type slackLambdaJSONEvent struct {
 	Method string `json:"method"`
 	// Body, if available.  This is going to be an interface s.t. we can support
 	// testing through APIGateway, which by default sends 'application/json'
-	Body interface{} `json:"body"`
+	Body slashCommandJSONBody `json:"body"`
 	// Whitelisted HTTP headers
 	Headers map[string]string `json:"headers"`
 	// Whitelisted HTTP query params
@@ -43,41 +54,30 @@ func makeDecision(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Error("Failed to unmarshal event data: ", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+
+	logger.Info("Incoming request", lambdaEvent.Body)
 
 	// 2. Conditionally unmarshal to get the Slack text.  See
 	// https://api.slack.com/slash-commands
 	// for the value name list
-	requestParams := url.Values{}
-	if bodyData, ok := lambdaEvent.Body.(string); ok {
-		requestParams, err = url.ParseQuery(bodyData)
-		if err != nil {
-			logger.Error("Failed to parse query: ", err.Error())
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-		logger.WithFields(logrus.Fields{
-			"Values": requestParams,
-		}).Info("Slack slashcommand values")
-	} else {
-		logger.Info("Event body empty")
-	}
-
-	// 3. Create the response
-	// Slack formatting:
-	// https://api.slack.com/docs/formatting
 	var userID string
-	if requestParams["user_id"] != nil && len(requestParams["user_id"]) > 0 {
-		userID = "<@" + requestParams["user_id"][0] + ">"
+	if len(lambdaEvent.Body.UserID) > 0 {
+		userID = "<@" + lambdaEvent.Body.UserID + ">"
 	} else {
 		userID = "You"
 	}
 	var text string
-	if requestParams["text"] != nil && len(requestParams["user_id"]) > 0 && requestParams["text"][0] == "coin" {
+	if lambdaEvent.Body.Text == "coin" {
 		text = "coin"
 	} else {
 		text = "dice"
 	}
 
+	// 3. Create the response
+	// Slack formatting:
+	// https://api.slack.com/docs/formatting
 	var responseText string
 	if text == "dice" {
 		responseText = userID + " just rolled :dice_" + strconv.Itoa(rand.Intn(6)+1) + ":"
@@ -91,11 +91,13 @@ func makeDecision(w http.ResponseWriter, r *http.Request) {
 		"response_type": "in_channel",
 		"text":          responseText,
 	}
+
 	// 5. Send it off
 	responseBody, err := json.Marshal(responseData)
 	if err != nil {
 		logger.Error("Failed to marshal response: ", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")

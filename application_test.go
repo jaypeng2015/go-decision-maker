@@ -4,7 +4,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"testing"
 
 	sparta "github.com/mweagle/Sparta"
@@ -20,9 +19,10 @@ func TestRoll(t *testing.T) {
 	lambdaFunctions = append(lambdaFunctions, lambdaFn)
 
 	// 2. Mock event specific data to send to the lambda function
-	eventData := url.Values{}
-	eventData.Set("user_id", "U12345")
-	eventData.Set("text", "coin")
+	eventData := sparta.ArbitraryJSONObject{
+		"user_id": "U12345",
+		"text":    "coin",
+	}
 
 	// 3. Make the request and confirm
 	// Make the request and confirm
@@ -30,12 +30,12 @@ func TestRoll(t *testing.T) {
 	ts := httptest.NewServer(sparta.NewServeMuxLambda(lambdaFunctions, logger))
 	defer ts.Close()
 	whitelistParamValues := map[string]string{
-		"method.request.header.Content-type": "application/x-www-form-urlencoded",
+		"method.request.header.Content-type": "application/json",
 	}
 	resp, err := explore.NewAPIGatewayRequest(lambdaFn.URLPath(),
 		"POST",
 		whitelistParamValues,
-		eventData.Encode(),
+		eventData,
 		ts.URL)
 
 	if err != nil {
